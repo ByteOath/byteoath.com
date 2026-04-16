@@ -15,8 +15,6 @@ services:
 
   nginx:
     image: nginx:alpine
-    ports:
-      - "${SITE_PORT:-3000}:80"
     volumes:
       - .:/var/www/html:ro
       - ./assets/brand:/var/www/html/public/assets/brand:ro
