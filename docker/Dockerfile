@@ -19,7 +19,7 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 # ── Stage 3: PHP-FPM runtime ──────────────────────────────────────────────────
-FROM php:8.2-fpm-alpine
+FROM php:8.2-fpm-alpine AS phpfpm
 
 # Install PDO SQLite
 RUN apk add --no-cache sqlite-libs sqlite-dev \
@@ -63,3 +63,14 @@ RUN chown -R www-data:www-data /var/www/html/storage
 
 WORKDIR /var/www/html
 
+# ── Stage 4: Nginx with baked-in config + static assets ───────────────────────
+FROM nginx:alpine AS nginx
+
+# Bake in nginx config — no bind mount needed
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy only the public directory (static assets: CSS, JS, SVGs, images)
+COPY --from=css-builder /build/public /var/www/html/public
+
+# Copy brand SVGs (source of truth is assets/brand/)
+COPY assets/brand/ /var/www/html/public/assets/brand/
