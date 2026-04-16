@@ -10,7 +10,15 @@ COPY public/    public/
 
 RUN npm ci && npm run build
 
-# ── Stage 2: PHP-FPM runtime ──────────────────────────────────────────────────
+# ── Stage 2: Composer dependencies ────────────────────────────────────────────
+FROM composer:2 AS composer-builder
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+# ── Stage 3: PHP-FPM runtime ──────────────────────────────────────────────────
 FROM php:8.2-fpm-alpine
 
 # Install PDO SQLite
@@ -41,8 +49,17 @@ RUN { \
 RUN mkdir -p /var/www/html/storage \
     && chown -R www-data:www-data /var/www/html/storage
 
-# Copy compiled CSS from builder stage
+# Copy application code into image (production — no bind mount)
+COPY --chown=www-data:www-data . /var/www/html/
+
+# Overwrite with compiled CSS from builder stage
 COPY --from=css-builder /build/public/assets/css/tailwind.css /var/www/html/public/assets/css/tailwind.css
+
+# Copy vendor from composer builder
+COPY --from=composer-builder /app/vendor /var/www/html/vendor
+
+# Storage must be writable
+RUN chown -R www-data:www-data /var/www/html/storage
 
 WORKDIR /var/www/html
 
