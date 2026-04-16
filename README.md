@@ -163,13 +163,33 @@ cd byteoath.com
 cp .env.example .env
 # Defaults work for local — no edits needed
 
-# 3. Node deps (for CSS)
+# 3. Create local override (gitignored — do this once per machine)
+# See "docker-compose.override.yml" section below for the full file content
+cat > docker-compose.override.yml << 'EOF'
+services:
+  phpfpm:
+    volumes:
+      - ./src:/var/www/html/src:ro
+      - ./templates:/var/www/html/templates:ro
+      - ./resources:/var/www/html/resources:ro
+      - ./public:/var/www/html/public:ro
+      - ./vendor:/var/www/html/vendor:ro
+  nginx:
+    ports:
+      - "${SITE_PORT:-3000}:80"
+    volumes:
+      - ./public:/var/www/html/public:ro
+      - ./assets/brand:/var/www/html/public/assets/brand:ro
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+EOF
+
+# 4. Node deps (for CSS)
 npm install
 
-# 4. Build CSS
+# 5. Build CSS
 npm run build
 
-# 5. Start Docker
+# 6. Start Docker
 docker compose up -d
 ```
 
@@ -180,6 +200,59 @@ docker compose up -d
 | http://localhost:3000/contact/ | Contact form |
 
 **Default admin:** `admin` / `ByteOath2024!` — change before going live.
+
+### docker-compose.override.yml (local bind mounts)
+
+Docker Compose automatically merges `docker-compose.override.yml` with `docker-compose.yml` **only on your local machine**. Dokploy and any CI/CD pipeline only use `docker-compose.yml`, so override settings never leak into production.
+
+**Why it exists:** The base `docker-compose.yml` bakes files into the image at build time. The override swaps those layers for live bind-mounts so that PHP template and source changes appear instantly in the browser without rebuilding the image.
+
+**This file is gitignored** — every developer creates it once locally:
+
+```bash
+# Run from the project root
+cat > docker-compose.override.yml << 'EOF'
+# ── Local development overrides ───────────────────────────────────────────────
+# Automatically merged with docker-compose.yml by Docker Compose.
+# NOT used by Dokploy (production) — only applies on your local machine.
+# Adds bind mounts so file changes are reflected instantly without rebuilding.
+
+services:
+
+  phpfpm:
+    volumes:
+      - ./src:/var/www/html/src:ro
+      - ./templates:/var/www/html/templates:ro
+      - ./resources:/var/www/html/resources:ro
+      - ./public:/var/www/html/public:ro
+      - ./vendor:/var/www/html/vendor:ro
+
+  nginx:
+    ports:
+      - "${SITE_PORT:-3000}:80"
+    volumes:
+      - ./public:/var/www/html/public:ro
+      - ./assets/brand:/var/www/html/public/assets/brand:ro
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+EOF
+```
+
+> **What each mount does:**
+> - `src/` — PHP controllers and core classes update live (no `docker compose restart`)
+> - `templates/` — PHP templates update live
+> - `resources/` — CSS source available inside the container (for tooling; rebuild still needed)
+> - `public/` — compiled assets (JS, CSS) update live after `npm run build`
+> - `vendor/` — Composer packages update live after `composer install`
+> - `assets/brand/` — logo SVGs served by Nginx update live
+> - `docker/nginx.conf` — Nginx config reloads with `docker compose restart nginx`
+
+After creating the file, restart Docker for the mounts to take effect:
+
+```bash
+docker compose down && docker compose up -d
+```
+
+---
 
 ### CSS watch mode (development)
 
@@ -222,6 +295,8 @@ php -r "echo password_hash('YourNewPassword', PASSWORD_BCRYPT);"
 ## 4. Production Deployment
 
 ### Option A — Dokploy (recommended self-hosted PaaS)
+
+> Please Check the URL : https://drive.google.com/file/d/18nr5BwShUHT9KqG5OunrLVre-ClQbBqu/view?usp=drive_link
 
 [Dokploy](https://dokploy.com) manages Docker deployments with Git webhooks, SSL, and reverse proxy.
 
